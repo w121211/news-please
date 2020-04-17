@@ -9,3 +9,5 @@ __pycache__/
 news-please.iml
 
 venv/
+.ipynb_checkpoints/
+cc_download*
