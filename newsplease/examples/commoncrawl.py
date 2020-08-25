@@ -24,6 +24,8 @@ import json
 import logging
 import os
 import sys
+import datetime
+from datetime import date
 
 from ..crawler import commoncrawl_crawler as commoncrawl_crawler
 
@@ -44,6 +46,7 @@ my_filter_start_date = None  # datetime.datetime(2016, 1, 1)
 # end date (if None, any date is OK as end date), as datetime
 my_filter_end_date = None  # datetime.datetime(2016, 12, 31)
 # if date filtering is strict and news-please could not detect the date of an article, the article will be discarded
+my_warc_files_start_date = None # example: datetime.datetime(2020, 3, 1)
 my_filter_strict_date = True
 # if True, the script checks whether a file has been downloaded already and uses that file instead of downloading
 # again. Note that there is no check whether the file has been downloaded completely or is valid!
@@ -130,7 +133,7 @@ def callback_on_warc_completed(warc_path, counter_article_passed, counter_articl
 def main():
     global my_local_download_dir_warc
     global my_local_download_dir_article
-    delete_warc_after_extraction = False
+    global my_delete_warc_after_extraction
     global my_number_of_extraction_processes
 
     if len(sys.argv) >= 2:
@@ -138,13 +141,13 @@ def main():
     if len(sys.argv) >= 3:
         my_local_download_dir_article = sys.argv[2]
     if len(sys.argv) >= 4:
-        delete_warc_after_extraction = sys.argv[3] == "delete"
+        my_delete_warc_after_extraction = sys.argv[3] == "delete"
     if len(sys.argv) >= 5:
         my_number_of_extraction_processes = int(sys.argv[4])
 
     print("my_local_download_dir_warc=" + my_local_download_dir_warc)
     print("my_local_download_dir_article=" + my_local_download_dir_article)
-    print("delete_warc_after_extraction=" + str(delete_warc_after_extraction))
+    print("my_delete_warc_after_extraction=" + str(my_delete_warc_after_extraction))
     print("my_number_of_extraction_processes=" + str(my_number_of_extraction_processes))
 
     __setup__()
@@ -153,6 +156,7 @@ def main():
                                                valid_hosts=my_filter_valid_hosts,
                                                start_date=my_filter_start_date,
                                                end_date=my_filter_end_date,
+                                               warc_files_start_date=my_warc_files_start_date,
                                                strict_date=my_filter_strict_date,
                                                reuse_previously_downloaded_files=my_reuse_previously_downloaded_files,
                                                local_download_dir_warc=my_local_download_dir_warc,
@@ -160,7 +164,7 @@ def main():
                                                show_download_progress=my_show_download_progress,
                                                number_of_extraction_processes=my_number_of_extraction_processes,
                                                log_level=my_log_level,
-                                               delete_warc_after_extraction=delete_warc_after_extraction,
+                                               delete_warc_after_extraction=my_delete_warc_after_extraction,
                                                continue_process=True)
 
 

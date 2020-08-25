@@ -155,15 +155,29 @@ class CommonCrawlExtractor:
         Gets the index of news crawl files from commoncrawl.org and returns an array of names
         :return:
         """
-        # cleanup
-        subprocess.getoutput("rm tmpaws.txt")
+        temp_filename = "tmpaws.txt"
+
+        if os.name == 'nt':
+            awk_parameter = '"{ print $4 }"'
+        else:
+            awk_parameter = "'{ print $4 }'"
+
         # get the remote info
-        cmd = "aws s3 ls --recursive s3://commoncrawl/crawl-data/CC-NEWS/ --no-sign-request > tmpaws.txt && " \
-              "awk '{ print $4 }' tmpaws.txt && " \
-              "rm tmpaws.txt"
+        cmd = "aws s3 ls --recursive s3://commoncrawl/crawl-data/CC-NEWS/ --no-sign-request > %s && " \
+              "awk %s %s " % (temp_filename, awk_parameter, temp_filename)
+
         self.__logger.info('executing: %s', cmd)
-        stdout_data = subprocess.getoutput(cmd)
+        exitcode, stdout_data = subprocess.getstatusoutput(cmd)
+
+        if exitcode > 0:
+            raise Exception(stdout_data)
+
         print(stdout_data)
+
+        try:
+            os.remove(temp_filename)
+        except OSError:
+            pass
 
         lines = stdout_data.splitlines()
         return lines
@@ -265,7 +279,8 @@ class CommonCrawlExtractor:
                                                human(start_time), secs_per_article)
                 except:
                     if self.__continue_after_error:
-                        self.__logger.error('Unexpected error: %s', sys.exc_info()[0])
+                        self.__logger.error('Unexpected error: %s (%s)', *sys.exc_info()[0:2])
+                        self.__logger.error(sys.exc_info()[2], exc_info=True)
                         counter_article_error += 1
                         pass
                     else:

@@ -10,6 +10,7 @@ import subprocess
 import time
 from functools import partial
 from multiprocessing import Pool
+import datetime
 
 from dateutil import parser
 from scrapy.utils.log import configure_logging
@@ -89,20 +90,59 @@ def __get_download_url(name):
     """
     return __cc_base_url + name
 
+def __iterate_by_month(start_date, end_date, month_step=1):
+    current_date = start_date
+    while current_date < end_date:
+        yield current_date
+        carry, new_month = divmod(current_date.month - 1 + month_step, 12)
+        new_month += 1
+        current_date = current_date.replace(year=current_date.year + carry,
+                                            month=new_month)
 
-def __get_remote_index():
+
+def __get_remote_index(warc_files_start_date):
     """
     Gets the index of news crawl files from commoncrawl.org and returns an array of names
     :return:
     """
-    # cleanup
-    subprocess.getoutput("rm tmpaws.txt")
+    temp_filename = ".tmpaws.txt"
+
+    if os.name == 'nt':
+        awk_parameter = '"{ print $4 }"'
+    else:
+        awk_parameter = "'{ print $4 }'"
+
     # get the remote info
-    cmd = "aws s3 ls --recursive s3://commoncrawl/crawl-data/CC-NEWS/ --no-sign-request > .tmpaws.txt && " \
-          "awk '{ print $4 }' .tmpaws.txt && " \
-          "rm .tmpaws.txt"
+
+    cmd = ''
+    if warc_files_start_date:
+        # cleanup
+        try:
+            os.remove(temp_filename)
+        except OSError:
+            pass
+
+        warc_dates = __iterate_by_month(warc_files_start_date, datetime.datetime.today())
+        for date in warc_dates:
+            year = date.strftime('%Y')
+            month = date.strftime('%m')
+            cmd += "aws s3 ls --recursive s3://commoncrawl/crawl-data/CC-NEWS/%s/%s/ --no-sign-request >> %s && " % (year, month, temp_filename)
+
+    else:
+        cmd = "aws s3 ls --recursive s3://commoncrawl/crawl-data/CC-NEWS/ --no-sign-request > %s && " % temp_filename
+
+    cmd += "awk %s %s " % (awk_parameter, temp_filename)
+
     __logger.info('executing: %s', cmd)
-    stdout_data = subprocess.getoutput(cmd)
+    exitcode, stdout_data = subprocess.getstatusoutput(cmd)
+
+    if exitcode > 0:
+        raise Exception(stdout_data)
+
+    try:
+        os.remove(temp_filename)
+    except OSError:
+        pass
 
     lines = stdout_data.splitlines()
     return lines
@@ -169,7 +209,7 @@ def __callback_on_warc_completed(warc_path, counter_article_passed, counter_arti
 
 def __start_commoncrawl_extractor(warc_download_url, callback_on_article_extracted=None,
                                   callback_on_warc_completed=None, valid_hosts=None,
-                                  start_date=None, end_date=None,
+                                  start_date=None, end_date=None, 
                                   strict_date=True, reuse_previously_downloaded_files=True,
                                   local_download_dir_warc=None,
                                   continue_after_error=True, show_download_progress=False,
@@ -209,8 +249,9 @@ def __start_commoncrawl_extractor(warc_download_url, callback_on_article_extract
 
 
 def crawl_from_commoncrawl(callback_on_article_extracted, callback_on_warc_completed=None, valid_hosts=None,
-                           start_date=None, end_date=None, strict_date=True, reuse_previously_downloaded_files=True,
-                           local_download_dir_warc=None, continue_after_error=True, show_download_progress=False,
+                           start_date=None, end_date=None, warc_files_start_date=None, strict_date=True, 
+                           reuse_previously_downloaded_files=True, local_download_dir_warc=None, 
+                           continue_after_error=True, show_download_progress=False,
                            number_of_extraction_processes=4, log_level=logging.ERROR,
                            delete_warc_after_extraction=True, continue_process=True):
     """
@@ -237,7 +278,7 @@ def crawl_from_commoncrawl(callback_on_article_extracted, callback_on_warc_compl
     global __extern_callback_on_warc_completed
     __extern_callback_on_warc_completed = callback_on_warc_completed
 
-    cc_news_crawl_names = __get_remote_index()
+    cc_news_crawl_names = __get_remote_index(warc_files_start_date)
     global __number_of_warc_files_on_cc
     __number_of_warc_files_on_cc = len(cc_news_crawl_names)
     __logger.info('found %i files at commoncrawl.org', __number_of_warc_files_on_cc)
